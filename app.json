@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "ECoM",
+    "slug": "ECoM",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/Splash.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/Splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#00291e"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/Splash.png",
+        "backgroundColor": "#00291e"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
