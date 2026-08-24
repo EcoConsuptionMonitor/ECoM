@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import styles from "./styles";
+
 
 function Dashboard(){
     const navigation = useNavigation();
