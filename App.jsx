@@ -28,10 +28,10 @@ export default function App() {
         <Stack.Screen name="Welcome" component={Welcome} options={{headerShown: false}}/> 
         <Stack.Screen name="Login" component={Login} options={{headerShown: false}}/>
         <Stack.Screen name="Cadastro" component={Cadastro}/>
-        <Stack.Screen name="Home" component={Home}/>
-        <Stack.Screen name="Alerts" component={Alerts}/>
-        <Stack.Screen name="Dashboard" component={Dashboard}/>
-        <Stack.Screen name="Environments" component={Environments}/>
+        <Stack.Screen name="Home" component={Home} options={{headerShown: false}}/>
+        <Stack.Screen name="Alerts" component={Alerts} options={{headerShown: false}}/>
+        <Stack.Screen name="Dashboard" component={Dashboard} options={{headerShown: false}}/>
+        <Stack.Screen name="Environments" component={Environments} options={{headerShown: false}}/>
       </Stack.Navigator>
     </NavigationContainer>
   );
