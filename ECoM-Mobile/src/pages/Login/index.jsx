@@ -1,6 +1,6 @@
 import { StyleSheet, Text, Touchable, TouchableOpacity, View, Image, TextInput} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-
+import EvilIcons from '@expo/vector-icons/EvilIcons';
 
 
 export default function Login(){
@@ -21,6 +21,7 @@ export default function Login(){
             />
 
             <Text style = {styles.senha}>Senha</Text>
+            {/*<EvilIcons name="eye" size={24} color="black" />*/}
             <TextInput
               placeholder = "Ex: senha123"
               style={styles.inputSenha}
