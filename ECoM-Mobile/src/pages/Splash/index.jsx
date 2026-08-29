@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 
 
 
-function Login(){
+function Splash(){
     const navigation = useNavigation();
     return(
         <View style = {styles.container}>
@@ -18,7 +18,7 @@ function Login(){
     )
 };
 
-export default Login;
+export default Splash;
 
 
 //Estilização

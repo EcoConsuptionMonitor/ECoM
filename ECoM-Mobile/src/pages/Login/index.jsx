@@ -1,10 +1,34 @@
-import { StyleSheet, Text, Touchable, TouchableOpacity, View, Image, TextInput} from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View, Image, TextInput, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import EvilIcons from '@expo/vector-icons/EvilIcons';
+import { api } from '../../services/api';
+import { setSession } from '../../services/session';
 
 
 export default function Login(){
     const navigation = useNavigation();
+    const [email, setEmail] = useState('');
+    const [senha, setSenha] = useState('');
+    const [carregando, setCarregando] = useState(false);
+    const [erro, setErro] = useState('');
+
+    async function handleEntrar() {
+      setErro('');
+      setCarregando(true);
+      try {
+        const data = await api('/auth/login', {
+          method: 'POST',
+          body: { email, senha },
+        });
+        setSession(data.token, data.usuario);
+        navigation.navigate('Home');
+      } catch (e) {
+        setErro(e.message);
+      } finally {
+        setCarregando(false);
+      }
+    }
+
     return(
         <View style = {styles.container}>
 
@@ -18,20 +42,32 @@ export default function Login(){
             <TextInput
               placeholder = "Ex: name@example.com"
               style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
 
             <Text style = {styles.senha}>Senha</Text>
-            {/*<EvilIcons name="eye" size={24} color="black" />*/}
             <TextInput
               placeholder = "Ex: senha123"
               style={styles.inputSenha}
+              value={senha}
+              onChangeText={setSenha}
+              secureTextEntry
             />
 
-            <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Home')}>
-              <Text style={styles.buttonText}>Entrar</Text>
+            {erro ? <Text style={styles.erro}>{erro}</Text> : null}
+
+            <TouchableOpacity style={styles.button} onPress={handleEntrar} disabled={carregando}>
+              {carregando ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.buttonText}>Entrar</Text>
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.buttonRegister} onPress={() => navigation.navigate('Cadastro')}>
+            <TouchableOpacity style={styles.linkCadastro} onPress={() => navigation.navigate('Cadastro')}>
               <Text style={styles.buttonRegister}>Não tem uma conta? Cadastre-se
               </Text>
             </TouchableOpacity>
@@ -143,6 +179,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     alignItems: 'center',
+  },
+  linkCadastro: {
+    alignItems: 'center',
+  },
+  erro: {
+    color: '#ff6b6b',
+    marginBottom: 10,
+    alignSelf: 'center',
   },
 
 });
