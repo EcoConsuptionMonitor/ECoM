@@ -242,6 +242,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },
+  buttonText: {
+    color: '#1e2d27',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   erro: {
     color: '#ff6b6b',
     marginBottom: 10,

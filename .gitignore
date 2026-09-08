@@ -22,3 +22,6 @@ pnpm-debug.log*
 coverage/
 dist/
 build/
+
+# Arduino
+ECoM-Arduino/node_modules/
