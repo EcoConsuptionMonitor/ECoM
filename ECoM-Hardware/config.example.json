@@ -1,0 +1,21 @@
+{
+  "wifi": {
+    "ssid": "NOME_DO_WIFI",
+    "senha": "SENHA_DO_WIFI"
+  },
+  "api": {
+    "url": "http://192.168.0.10:3333",
+    "token": "SEU_TOKEN_DA_API",
+    "ambienteId": "1"
+  },
+  "leitura": {
+    "intervalo_medicao_ms": 5000,
+    "intervalo_envio_s": 30,
+    "amostras_rms": 400,
+    "tensao_v": 127.0
+  },
+  "acs712": {
+    "sensibilidade_va": 0.185,
+    "divisor_tensao": 1.5
+  }
+}

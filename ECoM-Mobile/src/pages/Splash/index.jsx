@@ -29,8 +29,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text:{
-    color:'#fff',
-  }
- 
+  button: {
+    marginTop: 40,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    backgroundColor: '#c8ff00',
+    borderRadius: 25,
+  },
+  text: {
+    color: '#1e2d27',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });

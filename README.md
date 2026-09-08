@@ -7,6 +7,8 @@ Sistema de controle de consumo de água e energia. Monorepo com três aplicaçõ
 | `ECoM-Back`  | Node.js, Express, dotenv, cors                    | API REST                          |
 | `ECoM-Mobile`| React Native, Expo 54, React Navigation, charts   | Aplicativo mobile                  |
 | `ECoM-Web`   | Next.js 16, React 19, Tailwind CSS 4 + TypeScript | Aplicação web                      |
+| `ECoM-Hardware` | ESP32 + MicroPython (ACS712 + YF-S201 + relé)  | Firmware de leitura dos sensores da maquete |
+| `ECoM-Arduino`| Arduino Uno (C++) (legado)                        | Versão anterior do firmware        |
 
 ## Como rodar
 
@@ -52,16 +54,33 @@ Todas as rotas, exceto `/health` e `/auth/*` (exceto `/me`), exigem `Authorizati
 | POST   | `/consumo`         | Registra consumo (`ambienteId`, `tipo`, `valor`) |
 | GET    | `/ambientes`       | Lista ambientes do usuário                 |
 | POST   | `/ambientes`       | Cria ambiente (`nome`)                     |
+| PATCH  | `/ambientes/:id`   | Atualiza ambiente                          |
+| DELETE | `/ambientes/:id`   | Remove ambiente                            |
 | GET    | `/alertas`         | Lista alertas do usuário                   |
 | POST   | `/alertas`         | Cria alerta (`mensagem`, opcional `nivel`/`tipo`) |
 | PATCH  | `/alertas/:id`     | Marca alerta como lido (`lido: true`)      |
 
 A API usa **dados em memória** (sem banco de dados) — os dados são perdidos ao reiniciar o servidor.
 
+## Endpoints adicionais
+
+| Método | Rota                         | Descrição                                        |
+|--------|------------------------------|--------------------------------------------------|
+| GET    | `/dashboard`                 | Estatísticas gerais (totais, custos, histórico, alertas) |
+| GET    | `/tarifas`                   | Lista tarifas do usuário                         |
+| POST   | `/tarifas`                   | Cria/atualiza tarifa (`tipo`, `valorPorUnidade`) |
+| DELETE | `/tarifas/:id`               | Remove tarifa                                    |
+| GET    | `/sensores`                  | Lista leituras de sensores                       |
+| POST   | `/sensores`                  | Registra leitura de sensor (Arduino) e acumula consumo |
+| GET    | `/sensores/ultimas/:ambienteId` | Últimas 50 leituras de um ambiente             |
+
+> `POST /sensores` também gera alerta automático de consumo alto de energia e calcula custos usando as tarifas configuradas.
+
 ## Estado atual
 
-- **Backend:** API funcional com autenticação (token em memória), consumo, ambientes e alertas, e tratamento de erro/404 em JSON.
-- **Mobile:** navegação (Splash → Welcome → Login/Cadastro → abas); Login e Cadastro autenticam na API; Home e Alerts consomem dados reais do backend.
-- **Web:** painel (dashboard) com login/registro, totais de consumo, alertas e tabela de consumo — consome a mesma API.
+- **Backend:** API funcional com autenticação (token em memória), consumo, ambientes, alertas, dashboard de estatísticas, tarifas e endpoint de sensores, e tratamento de erro/404 em JSON.
+- **Mobile:** navegação (Splash → Welcome → Login/Cadastro → abas); Login e Cadastro autenticam na API; Home, Alerts, Dashboard (gráficos), Environments (CRUD) e Controls (simulação de dispositivos) consomem dados reais do backend.
+- **Web:** painel (dashboard) com login/registro, gráficos de consumo (Recharts), custos, alertas e página de ambientes com CRUD.
+- **Hardware (ESP32):** firmware MicroPython para `ECoM-Hardware` — 5x ACS712 (corrente), 3x YF-S201 (fluxo de água), 1 relé (lâmpada) e bomba d'água. O ESP32 se conecta ao Wi-Fi e envia as leituras direto para a API (`POST /sensores`). Versão anterior (Arduino Uno + bridge) mantida em `ECoM-Arduino` como legado.
 
 > Nota: use um único gerenciador de pacotes (`npm`) — não commitar `yarn.lock` e `package-lock.json` juntos.

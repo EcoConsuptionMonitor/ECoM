@@ -7,6 +7,8 @@ const sessoes = [];
 const ambientes = [];
 const consumo = [];
 const alertas = [];
+const tarifas = [];
+const sensores = [];
 
 export default {
   usuarios,
@@ -14,5 +16,7 @@ export default {
   ambientes,
   consumo,
   alertas,
+  tarifas,
+  sensores,
   nextId,
 };
