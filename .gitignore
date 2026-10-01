@@ -26,3 +26,5 @@ build/
 
 # Arduino
 ECoM-Arduino/node_modules/
+
+.agents/
