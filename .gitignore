@@ -22,6 +22,9 @@ pnpm-debug.log*
 coverage/
 dist/
 build/
+.playwright-cli/
 
 # Arduino
 ECoM-Arduino/node_modules/
+
+.agents/

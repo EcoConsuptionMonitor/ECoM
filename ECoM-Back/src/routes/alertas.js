@@ -1,19 +1,22 @@
 import { Router } from 'express';
-import store from '../data/store.js';
+import { query, reduzirAlerta } from '../lib/db.js';
 import { autenticar } from '../middleware/auth.js';
 
 const router = Router();
 
 router.use(autenticar);
 
-router.get('/', (req, res) => {
-  const itens = store.alertas
-    .filter((a) => a.userId === req.userId)
-    .sort((a, b) => new Date(b.data) - new Date(a.data));
-  return res.json(itens);
+router.get('/', async (req, res) => {
+  const resultado = await query(
+    `SELECT * FROM alertas
+     WHERE user_id = $1
+     ORDER BY data DESC`,
+    [req.userId]
+  );
+  return res.json(resultado.rows.map(reduzirAlerta));
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { mensagem, nivel, tipo } = req.body || {};
 
   if (!mensagem) {
@@ -22,34 +25,43 @@ router.post('/', (req, res) => {
 
   const niveisValidos = ['info', 'alerta', 'critico'];
   if (nivel && !niveisValidos.includes(nivel)) {
-    return res.status(400).json({ erro: `Nível deve ser um de: ${niveisValidos.join(', ')}.` });
+    return res
+      .status(400)
+      .json({ erro: `Nível deve ser um de: ${niveisValidos.join(', ')}.` });
   }
 
-  const alerta = {
-    id: store.nextId(),
-    userId: req.userId,
-    mensagem,
-    nivel: nivel || 'info',
-    tipo: tipo || 'geral',
-    lido: false,
-    data: new Date().toISOString(),
-  };
+  const inserido = await query(
+    `INSERT INTO alertas (user_id, mensagem, nivel, tipo)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [req.userId, mensagem, nivel || 'info', tipo || 'geral']
+  );
 
-  store.alertas.push(alerta);
-  return res.status(201).json(alerta);
+  return res.status(201).json(reduzirAlerta(inserido.rows[0]));
 });
 
-router.patch('/:id', (req, res) => {
-  const alerta = store.alertas.find((a) => a.id === req.params.id && a.userId === req.userId);
-  if (!alerta) {
+router.patch('/:id', async (req, res) => {
+  const alertaResult = await query(
+    'SELECT * FROM alertas WHERE id = $1 AND user_id = $2',
+    [req.params.id, req.userId]
+  );
+  if (alertaResult.rowCount === 0) {
     return res.status(404).json({ erro: 'Alerta não encontrado.' });
   }
 
+  let lido;
   if (req.body && typeof req.body.lido === 'boolean') {
-    alerta.lido = req.body.lido;
+    lido = req.body.lido;
+  } else {
+    lido = alertaResult.rows[0].lido;
   }
 
-  return res.json(alerta);
+  const atualizado = await query(
+    'UPDATE alertas SET lido = $1 WHERE id = $2 RETURNING *',
+    [lido, req.params.id]
+  );
+
+  return res.json(reduzirAlerta(atualizado.rows[0]));
 });
 
 export default router;

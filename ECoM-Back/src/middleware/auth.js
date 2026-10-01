@@ -1,17 +1,20 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import store from '../data/store.js';
+import { query } from '../lib/db.js';
 
 export function hashSenha(senha) {
   return createHash('sha256').update(senha).digest('hex');
 }
 
-export function criarToken(userId) {
+export async function criarToken(userId) {
   const token = randomBytes(32).toString('hex');
-  store.sessoes.push({ token, userId });
+  await query('INSERT INTO sessoes (token, user_id) VALUES ($1, $2)', [
+    token,
+    userId,
+  ]);
   return token;
 }
 
-export function autenticar(req, res, next) {
+export async function autenticar(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
@@ -19,12 +22,14 @@ export function autenticar(req, res, next) {
     return res.status(401).json({ erro: 'Token de autenticação não fornecido.' });
   }
 
-  const sessao = store.sessoes.find((s) => s.token === token);
-  if (!sessao) {
+  const resultado = await query('SELECT user_id FROM sessoes WHERE token = $1', [
+    token,
+  ]);
+  if (resultado.rowCount === 0) {
     return res.status(401).json({ erro: 'Token inválido ou expirado.' });
   }
 
-  req.userId = sessao.userId;
+  req.userId = Number(resultado.rows[0].user_id);
   return next();
 }
 

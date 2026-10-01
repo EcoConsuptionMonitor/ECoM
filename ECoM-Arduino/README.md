@@ -1,69 +1,84 @@
-# ECoM Arduino
+# ECoM Arduino — ESP32
 
-Código e utilitários para a parte de hardware do EcoMonitor (maquete).
-
-## Hardware
-
-- **Arduino Uno R3** (compatível)
-- **3x ACS712 (5A)** — sensores de corrente elétrica (pinos A0, A1, A2)
-- **2x YF-S201** — sensores de fluxo de água (pinos 2, 3)
+Firmware para a maquete do EcoMonitor compilado pela Arduino IDE para ESP32.
+Ele mede cinco circuitos de corrente, três circuitos de água, controla um relé
+e publica uma linha JSON na Serial a cada 30 segundos. O `bridge.js` recebe
+esse JSON e o envia à API do ECoM.
 
 ## Ligações
 
-### ACS712 (3 sensores)
+| Componente | Sinal | GPIO do ESP32 |
+|---|---|---:|
+| ACS712 1 | OUT | 32 |
+| ACS712 2 | OUT | 33 |
+| ACS712 3 | OUT | 34 |
+| ACS712 4 | OUT | 35 |
+| ACS712 5 | OUT | 4 |
+| YF-S201 1 | Sinal | 25 |
+| YF-S201 2 | Sinal | 26 |
+| YF-S201 3 | Sinal | 27 |
+| Módulo relé | IN | 18 |
 
-| Sensor | VCC | GND | OUT            |
-|--------|-----|-----|----------------|
-| 1      | 5V  | GND | A0             |
-| 2      | 5V  | GND | A1             |
-| 3      | 5V  | GND | A2             |
+Ligue todos os `GND` em comum. Os ACS712 e YF-S201 usam 5 V; o relé deve ser
+alimentado conforme a especificação do módulo e da carga que ele comanda.
 
-O fio de corrente (fase da carga da maquete) passa pelo terminal do sensor.
+> **Atenção — ACS712:** o sinal `OUT` é de até 5 V quando o módulo é
+> alimentado em 5 V. O GPIO do ESP32 aceita no máximo 3,3 V. Instale um
+> divisor de tensão em cada saída, por exemplo: 10 kΩ entre `OUT` e GPIO e
+> 20 kΩ entre GPIO e `GND`. Essa montagem reduz 5 V para aproximadamente
+> 3,33 V. Nunca conecte `OUT` diretamente ao ESP32.
 
-### YF-S201 (2 sensores)
+O divisor sugerido tem fator 1,5 e já está configurado em
+`FATOR_DIVISOR_TENSAO`. Se montar outra proporção, ajuste essa constante.
 
-| Sensor | VCC | GND | Sinal          |
-|--------|-----|-----|----------------|
-| 1      | 5V  | GND | D2 (interrupt) |
-| 2      | 5V  | GND | D3 (interrupt) |
+## Upload e calibração
 
-O sensor de fluxo é instalado na mangueira da mini-residência (bomba de aquário p.ex.).
+1. Instale o pacote de placas **ESP32 by Espressif Systems** na Arduino IDE.
+2. Abra [ecom_sensors.ino](ecom_sensors.ino) e escolha a sua placa e porta.
+3. Antes de enviar ou reiniciar, deixe todas as cargas que passam pelos
+   ACS712 desligadas. O firmware calcula o ponto zero na inicialização.
+4. Abra o Monitor Serial em **9600 baud**. A leitura JSON aparece a cada 30 s.
 
-> **Segurança:** use apenas cargas de baixa tensão (lâmpadas LED, bomba de aquário, fontes isoladas).
-> NUNCA ligue diretamente na rede elétrica da escola/feira sem supervisão de um professor.
+Para ACS712 de 20 A ou 30 A, altere `SENSIBILIDADE_ACS_V_POR_A` para `0.100`
+ou `0.066`, respectivamente. Calibre o YF-S201 ajustando
+`PULSOS_POR_LITRO` após medir o volume real de água.
 
-## Como usar
+## Relé
 
-1. Abra `ecom_sensors.ino` na Arduino IDE e faça upload para a placa.
-2. Abra o Serial Monitor (9600 baud) para ver as leituras JSON.
-3. Cadastre um ambiente na API (pelo app mobile/web) e guarde o `ambienteId` e o `token`.
-4. Suba a API do backend (`cd ECoM-Back && npm run dev`).
-5. Execute o bridge para encaminhar os dados à API:
+Envie um dos comandos abaixo pelo Monitor Serial, com “Newline” habilitado:
 
-```bash
-cd ECoM-Arduino
-npm install serialport
-node bridge.js COM3 SEU_TOKEN
+```text
+RELE ON
+RELE OFF
+RELE TOGGLE
 ```
 
-Se houver vários ambientes, defina qual recebe os dados:
+O código considera relé ativo em nível baixo, comum nesses módulos. Caso o
+seu relé opere invertido, mude `RELE_ATIVO_EM_LOW` para `false`.
+
+## Integração com o ECoM
+
+Com a API em execução, informe a porta, token e ambiente para o bridge:
 
 ```powershell
+cd ECoM-Arduino
+npm install serialport
 $env:AMBIENTE_ID = "1"
 node bridge.js COM3 SEU_TOKEN
 ```
 
-## Formato das leituras (Serial/JSON)
+Substitua `COM3`, o token e o ID do ambiente pelos seus valores. O bridge usa
+`http://localhost:3333` por padrão; defina `API_URL` se a API estiver em outra
+máquina.
+
+## JSON emitido
 
 ```json
-{"corrente":[0.12,0.05,0.00],"fluxo":[10.5,20.3],"energiaKwh":0.87,"aguaLitros":15.5}
+{"corrente":[0.12,0.05,0,0,0],"fluxo":[1.5,0,0],"energiaKwh":0.00025,"aguaLitros":0.125,"rele":false}
 ```
 
-| Campo          | Significado                                    |
-|----------------|------------------------------------------------|
-| `corrente[]`   | Corrente RMS (A) de cada sensor ACS712         |
-| `fluxo[]`      | Vazão instantânea (L/min) de cada YF-S201      |
-| `energiaKwh`   | Energia acumulada (kWh) desde o último envio   |
-| `aguaLitros`   | Volume acumulado (L) desde o último envio      |
-
-As leituras são feitas a cada 5 segundos e enviadas pela Serial a cada 30 segundos.
+- `corrente`: corrente RMS em ampères para cada ACS712;
+- `fluxo`: vazão em L/min para cada YF-S201;
+- `energiaKwh`: energia acumulada desde o último JSON;
+- `aguaLitros`: volume acumulado desde o último JSON;
+- `rele`: estado do relé.

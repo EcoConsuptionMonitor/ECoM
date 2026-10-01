@@ -1,75 +1,84 @@
 import { Router } from 'express';
-import store from '../data/store.js';
+import { query, reduzirAlerta } from '../lib/db.js';
 import { autenticar } from '../middleware/auth.js';
+import { obterTarifas } from '../lib/tarifas.js';
 
 const router = Router();
 
 router.use(autenticar);
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const userId = req.userId;
 
-  const userConsumo = store.consumo.filter((c) => c.userId === userId);
-  const userAmbientes = store.ambientes.filter((a) => a.userId === userId);
-  const userAlertas = store.alertas.filter((a) => a.userId === userId);
-  const userTarifas = store.tarifas.filter((t) => t.userId === userId);
+  const tarifas = await obterTarifas(userId);
+  const valorAguaM3 = tarifas.agua;
+  const valorEnergiaKwh = tarifas.energia;
 
-  const tarifaAgua = userTarifas.find((t) => t.tipo === 'agua');
-  const tarifaEnergia = userTarifas.find((t) => t.tipo === 'energia');
-  const valorAguaM3 = tarifaAgua ? tarifaAgua.valorPorUnidade : 5.82;
-  const valorEnergiaKwh = tarifaEnergia ? tarifaEnergia.valorPorUnidade : 0.65;
+  const [totais, mes, alertas, historico, consumoPorAmbiente, alertasRecentes] =
+    await Promise.all([
+      query(
+        `SELECT
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'agua'), 0) AS agua,
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'energia'), 0) AS energia
+         FROM consumo WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'agua'), 0) AS agua,
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'energia'), 0) AS energia
+         FROM consumo
+         WHERE user_id = $1
+           AND data >= date_trunc('month', now())`,
+        [userId]
+      ),
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE NOT lido) AS ativos,
+           COUNT(*) FILTER (WHERE NOT lido AND nivel = 'critico') AS criticos
+         FROM alertas WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+           to_char(data, 'YYYY-MM-DD') AS dia,
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'agua'), 0) AS agua,
+           COALESCE(SUM(valor) FILTER (WHERE tipo = 'energia'), 0) AS energia
+         FROM consumo
+         WHERE user_id = $1
+         GROUP BY to_char(data, 'YYYY-MM-DD')
+         ORDER BY dia DESC
+         LIMIT 30`,
+        [userId]
+      ),
+      query(
+        `SELECT
+           a.id AS ambiente_id,
+           a.nome,
+           COALESCE(SUM(c.valor) FILTER (WHERE c.tipo = 'agua'), 0) AS agua,
+           COALESCE(SUM(c.valor) FILTER (WHERE c.tipo = 'energia'), 0) AS energia
+         FROM ambientes a
+         LEFT JOIN consumo c ON c.ambiente_id = a.id
+         WHERE a.user_id = $1
+         GROUP BY a.id, a.nome
+         ORDER BY a.id`,
+        [userId]
+      ),
+      query(
+        `SELECT * FROM alertas
+         WHERE user_id = $1
+         ORDER BY data DESC
+         LIMIT 10`,
+        [userId]
+      ),
+    ]);
 
-  const totalAgua = userConsumo
-    .filter((c) => c.tipo === 'agua')
-    .reduce((acc, c) => acc + c.valor, 0);
-
-  const totalEnergia = userConsumo
-    .filter((c) => c.tipo === 'energia')
-    .reduce((acc, c) => acc + c.valor, 0);
+  const totalAgua = Number(totais.rows[0].agua);
+  const totalEnergia = Number(totais.rows[0].energia);
 
   const custoAgua = (totalAgua / 1000) * valorAguaM3;
   const custoEnergia = totalEnergia * valorEnergiaKwh;
   const custoTotal = custoAgua + custoEnergia;
-
-  const alertasAtivos = userAlertas.filter((a) => !a.lido).length;
-  const alertasCriticos = userAlertas.filter((a) => !a.lido && a.nivel === 'critico').length;
-
-  const agora = new Date();
-  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
-  const consumoMes = userConsumo.filter((c) => new Date(c.data) >= inicioMes);
-  const consumoMesAgua = consumoMes
-    .filter((c) => c.tipo === 'agua')
-    .reduce((acc, c) => acc + c.valor, 0);
-  const consumoMesEnergia = consumoMes
-    .filter((c) => c.tipo === 'energia')
-    .reduce((acc, c) => acc + c.valor, 0);
-
-  const consumoPorDia = {};
-  userConsumo.forEach((c) => {
-    const dia = c.data.slice(0, 10);
-    if (!consumoPorDia[dia]) {
-      consumoPorDia[dia] = { agua: 0, energia: 0 };
-    }
-    consumoPorDia[dia][c.tipo] += c.valor;
-  });
-  const historico = Object.entries(consumoPorDia)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-30)
-    .map(([dia, val]) => ({ dia, ...val }));
-
-  const consumoPorAmbiente = userAmbientes.map((amb) => {
-    const registros = userConsumo.filter((c) => c.ambienteId === amb.id);
-    return {
-      ambienteId: amb.id,
-      nome: amb.nome,
-      agua: registros.filter((c) => c.tipo === 'agua').reduce((a, c) => a + c.valor, 0),
-      energia: registros.filter((c) => c.tipo === 'energia').reduce((a, c) => a + c.valor, 0),
-    };
-  });
-
-  const alertasRecentes = userAlertas
-    .sort((a, b) => new Date(b.data) - new Date(a.data))
-    .slice(0, 10);
 
   return res.json({
     totais: {
@@ -80,17 +89,24 @@ router.get('/', (req, res) => {
       custoTotal: Number(custoTotal.toFixed(2)),
     },
     mes: {
-      agua: consumoMesAgua,
-      energia: consumoMesEnergia,
+      agua: Number(mes.rows[0].agua),
+      energia: Number(mes.rows[0].energia),
     },
     alertas: {
-      ativos: alertasAtivos,
-      criticos: alertasCriticos,
+      ativos: Number(alertas.rows[0].ativos),
+      criticos: Number(alertas.rows[0].criticos),
     },
-    ambientes: userAmbientes.length,
-    historico,
-    consumoPorAmbiente,
-    alertasRecentes,
+    ambientes: Number(consumoPorAmbiente.rowCount),
+    historico: historico.rows
+      .reverse()
+      .map((r) => ({ dia: r.dia, agua: Number(r.agua), energia: Number(r.energia) })),
+    consumoPorAmbiente: consumoPorAmbiente.rows.map((r) => ({
+      ambienteId: String(r.ambiente_id),
+      nome: r.nome,
+      agua: Number(r.agua),
+      energia: Number(r.energia),
+    })),
+    alertasRecentes: alertasRecentes.rows.map(reduzirAlerta),
     tarifas: {
       agua: valorAguaM3,
       energia: valorEnergiaKwh,

@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:3333';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3333';
 
 export async function api(path, { method = 'GET', body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };

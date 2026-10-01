@@ -1,61 +1,80 @@
 import { Router } from 'express';
-import store from '../data/store.js';
+import { query, reduzirConsumo } from '../lib/db.js';
 import { autenticar } from '../middleware/auth.js';
 
 const router = Router();
 
 router.use(autenticar);
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { tipo, ambienteId } = req.query;
 
-  let itens = store.consumo.filter((c) => c.userId === req.userId);
-
+  const filtros = ['c.user_id = $1'];
+  const params = [req.userId];
   if (tipo) {
-    itens = itens.filter((c) => c.tipo === tipo);
+    params.push(tipo);
+    filtros.push(`c.tipo = $${params.length}`);
   }
   if (ambienteId) {
-    itens = itens.filter((c) => c.ambienteId === ambienteId);
+    params.push(ambienteId);
+    filtros.push(`c.ambiente_id = $${params.length}`);
   }
 
-  itens = itens.sort((a, b) => new Date(b.data) - new Date(a.data));
+  const resultado = await query(
+    `SELECT * FROM consumo c
+     WHERE ${filtros.join(' AND ')}
+     ORDER BY c.data DESC`,
+    params
+  );
 
-  return res.json(itens);
+  return res.json(resultado.rows.map(reduzirConsumo));
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { ambienteId, tipo, valor, unidade, data } = req.body || {};
 
   if (!ambienteId || !tipo || valor == null) {
-    return res.status(400).json({ erro: 'Campos obrigatórios: ambienteId, tipo e valor.' });
+    return res
+      .status(400)
+      .json({ erro: 'Campos obrigatórios: ambienteId, tipo e valor.' });
   }
   if (!['agua', 'energia'].includes(tipo)) {
-    return res.status(400).json({ erro: 'O campo tipo deve ser "agua" ou "energia".' });
+    return res
+      .status(400)
+      .json({ erro: 'O campo tipo deve ser "agua" ou "energia".' });
+  }
+  const valorNumerico = Number(valor);
+  if (!Number.isFinite(valorNumerico) || valorNumerico < 0) {
+    return res.status(400).json({
+      erro: 'O campo valor deve ser um número maior ou igual a zero.',
+    });
   }
 
-  const ambiente = store.ambientes.find(
-    (a) => a.id === ambienteId && a.userId === req.userId
+  const ambiente = await query(
+    'SELECT id FROM ambientes WHERE id = $1 AND user_id = $2',
+    [ambienteId, req.userId]
   );
-  if (!ambiente) {
-    return res.status(404).json({ erro: 'Ambiente não encontrado para este usuário.' });
+  if (ambiente.rowCount === 0) {
+    return res
+      .status(404)
+      .json({ erro: 'Ambiente não encontrado para este usuário.' });
   }
 
-  const registro = {
-    id: store.nextId(),
-    userId: req.userId,
-    ambienteId,
-    tipo,
-    valor: Number(valor),
-    unidade: unidade || (tipo === 'agua' ? 'L' : 'kWh'),
-    data: data || new Date().toISOString(),
-  };
+  const inserido = await query(
+    `INSERT INTO consumo (user_id, ambiente_id, tipo, valor, unidade, data)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      req.userId,
+      ambienteId,
+      tipo,
+      valorNumerico,
+      unidade || (tipo === 'agua' ? 'L' : 'kWh'),
+      data || new Date().toISOString(),
+    ]
+  );
 
-  if (Number.isNaN(registro.valor)) {
-    return res.status(400).json({ erro: 'O campo valor deve ser numérico.' });
-  }
-
-  store.consumo.push(registro);
-  return res.status(201).json(registro);
+  return res.status(201).json(reduzirConsumo(inserido.rows[0]));
 });
 
 export default router;
