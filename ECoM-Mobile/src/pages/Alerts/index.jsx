@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Entypo from '@expo/vector-icons/Entypo';
 import { api } from '../../services/api';
 import { getToken } from '../../services/session';
+import { cores } from '../../styles/theme';
 
 export default function Alerts(){
     const [alertas, setAlertas] = useState([]);
@@ -49,7 +50,7 @@ export default function Alerts(){
 
     return(
         <View style ={styles.container}>
-            <Text style={styles.titulo}>Alertas</Text>
+            <View style={styles.cabecalho}><Text style={styles.titulo}>Alertas</Text><Text style={styles.subtitulo}>Acompanhe o que pede sua atenção.</Text></View>
             {carregando ? (
                 <ActivityIndicator color="#c8ff00" size="large" />
             ) : (
@@ -83,33 +84,35 @@ export default function Alerts(){
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1e2d27',
-    paddingTop: 40,
+    backgroundColor: cores.fundo,
+    paddingTop: 56,
   },
+  cabecalho: { paddingHorizontal: 20, marginBottom: 14 },
   titulo: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    paddingHorizontal: 20,
-    marginBottom: 10,
+    color: cores.texto,
+    fontSize: 26,
+    fontWeight: '800',
   },
+  subtitulo: { color: cores.textoSuave, fontSize: 13, marginTop: 5 },
   lista: {
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
   vazio: {
-    color: '#fff',
+    color: cores.textoSuave,
     textAlign: 'center',
     marginTop: 40,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#000',
-    borderRadius: 16,
+    backgroundColor: cores.superficie,
+    borderRadius: 18,
     padding: 16,
     marginVertical: 8,
     gap: 12,
+    borderWidth: 1,
+    borderColor: cores.linha,
   },
   cardLido: {
     opacity: 0.55,
@@ -118,17 +121,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mensagem: {
-    color: '#fff',
+    color: cores.texto,
     fontSize: 15,
     fontWeight: 'bold',
   },
   meta: {
-    color: '#9cb3a8',
+    color: cores.textoSuave,
     fontSize: 12,
     marginTop: 4,
   },
   lidoBtn: {
-    color: '#c8ff00',
+    color: cores.verde,
     fontWeight: 'bold',
   },
   lidoTexto: {

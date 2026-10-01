@@ -6,12 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/Splash.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/Splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1e2d27"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -20,11 +14,22 @@
         "foregroundImage": "./assets/Splash.png",
         "backgroundColor": "#00291e"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/Splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1e2d27"
+        }
+      ]
+    ]
   }
 }

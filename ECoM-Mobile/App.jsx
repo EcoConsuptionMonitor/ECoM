@@ -6,6 +6,7 @@ import Welcome from './src/pages/Welcome';
 import Login from './src/pages/Login';
 import Cadastro from './src/pages/Cadastro';
 import Bottoms from './src/routes/bottoms.routes';
+import Profile from './src/pages/Profile';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,6 +19,7 @@ export default function App() {
         <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
         <Stack.Screen name="Cadastro" component={Cadastro} />
         <Stack.Screen name="Home" component={Bottoms} options={{ headerShown: false }} />
+        <Stack.Screen name="Profile" component={Profile} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

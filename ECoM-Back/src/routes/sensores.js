@@ -1,81 +1,124 @@
 import { Router } from 'express';
-import store from '../data/store.js';
+import { comTransacao, reduzirSensor, reduzirConsumo, reduzirAlerta } from '../lib/db.js';
 import { autenticar } from '../middleware/auth.js';
+import { obterTarifas } from '../lib/tarifas.js';
 
 const router = Router();
 
 router.use(autenticar);
 
-router.get('/', (req, res) => {
-  const itens = store.sensores.filter((s) => s.userId === req.userId);
-  return res.json(itens);
+router.get('/', async (req, res) => {
+  const resultado = await comTransacao(async (client) => {
+    const r = await client.query('SELECT * FROM sensores WHERE user_id = $1', [
+      req.userId,
+    ]);
+    return r.rows;
+  });
+  return res.json(resultado.map(reduzirSensor));
 });
 
-router.post('/', (req, res) => {
-  const { ambienteId, tipo, valor, unidade, potencia, corrente, tensao } = req.body || {};
+router.post('/', async (req, res) => {
+  const { ambienteId, tipo, valor, unidade, potencia, corrente, tensao } =
+    req.body || {};
 
   if (!ambienteId || !tipo || valor == null) {
-    return res.status(400).json({ erro: 'Campos obrigatórios: ambienteId, tipo e valor.' });
+    return res
+      .status(400)
+      .json({ erro: 'Campos obrigatórios: ambienteId, tipo e valor.' });
   }
   if (!['agua', 'energia'].includes(tipo)) {
-    return res.status(400).json({ erro: 'O campo tipo deve ser "agua" ou "energia".' });
+    return res
+      .status(400)
+      .json({ erro: 'O campo tipo deve ser "agua" ou "energia".' });
+  }
+  const valorNumerico = Number(valor);
+  if (!Number.isFinite(valorNumerico) || valorNumerico < 0) {
+    return res.status(400).json({
+      erro: 'O campo valor deve ser um número maior ou igual a zero.',
+    });
   }
 
-  const ambiente = store.ambientes.find(
-    (a) => a.id === ambienteId && a.userId === req.userId
-  );
-  if (!ambiente) {
-    return res.status(404).json({ erro: 'Ambiente não encontrado para este usuário.' });
-  }
-
-  const leitura = {
-    id: store.nextId(),
-    userId: req.userId,
-    ambienteId,
-    tipo,
-    valor: Number(valor),
-    unidade: unidade || (tipo === 'agua' ? 'L/min' : 'A'),
-    potencia: potencia != null ? Number(potencia) : null,
-    corrente: corrente != null ? Number(corrente) : null,
-    tensao: tensao != null ? Number(tensao) : null,
-    data: new Date().toISOString(),
-  };
-
-  store.sensores.push(leitura);
-
-  const registroConsumo = {
-    id: store.nextId(),
-    userId: req.userId,
-    ambienteId,
-    tipo,
-    valor: tipo === 'agua' ? Number(valor) : Number(valor),
-    unidade: tipo === 'agua' ? 'L' : 'kWh',
-    fonte: 'sensor',
-    data: new Date().toISOString(),
-  };
-  store.consumo.push(registroConsumo);
-
-  const userConsumo = store.consumo.filter((c) => c.userId === req.userId && c.tipo === tipo);
-  const total = userConsumo.reduce((acc, c) => acc + c.valor, 0);
-  const userTarifas = store.tarifas.filter((t) => t.userId === req.userId);
-  const tarifa = userTarifas.find((t) => t.tipo === tipo);
-  const valorPorUnidade = tarifa ? tarifa.valorPorUnidade : (tipo === 'agua' ? 5.82 : 0.65);
-  const fator = tipo === 'agua' ? 1 / 1000 : 1;
-  const custoTotal = total * fator * valorPorUnidade;
-
-  if (tipo === 'energia' && valor > 5) {
-    const jaExiste = store.alertas.some(
-      (a) => a.userId === req.userId && a.tipo === tipo && !a.lido && a.mensagem.includes('elevado')
+  const ambiente = await comTransacao(async (client) => {
+    const r = await client.query(
+      'SELECT id FROM ambientes WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [ambienteId, req.userId]
     );
-    if (!jaExiste) {
-      store.alertas.push({
-        id: store.nextId(),
-        userId: req.userId,
-        mensagem: `Consumo elevado de energia detectado: ${valor} ${leitura.unidade}`,
-        nivel: 'critico',
+    return r.rows[0] || null;
+  });
+  if (!ambiente) {
+    return res
+      .status(404)
+      .json({ erro: 'Ambiente não encontrado para este usuário.' });
+  }
+
+  const leitura = await comTransacao(async (client) => {
+    const r = await client.query(
+      `INSERT INTO sensores (user_id, ambiente_id, tipo, valor, unidade, potencia, corrente, tensao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        req.userId,
+        ambienteId,
         tipo,
-        lido: false,
-        data: new Date().toISOString(),
+        valorNumerico,
+        unidade || (tipo === 'agua' ? 'L/min' : 'A'),
+        potencia != null ? Number(potencia) : null,
+        corrente != null ? Number(corrente) : null,
+        tensao != null ? Number(tensao) : null,
+      ]
+    );
+    return reduzirSensor(r.rows[0]);
+  });
+
+  const registroConsumo = await comTransacao(async (client) => {
+    const r = await client.query(
+      `INSERT INTO consumo (user_id, ambiente_id, tipo, valor, unidade, fonte)
+       VALUES ($1, $2, $3, $4, $5, 'sensor')
+       RETURNING *`,
+      [req.userId, ambienteId, tipo, valorNumerico, tipo === 'agua' ? 'L' : 'kWh']
+    );
+    return reduzirConsumo(r.rows[0]);
+  });
+
+  const tarifas = await obterTarifas(req.userId);
+  const valorPorUnidade = tarifas[tipo];
+
+  const somaTotal = await comTransacao(async (client) => {
+    const r = await client.query(
+      `SELECT COALESCE(SUM(valor), 0) AS total
+       FROM consumo
+       WHERE user_id = $1 AND tipo = $2`,
+      [req.userId, tipo]
+    );
+    return Number(r.rows[0].total);
+  });
+
+  const fator = tipo === 'agua' ? 1 / 1000 : 1;
+  const custoTotal = somaTotal * fator * valorPorUnidade;
+
+  if (tipo === 'energia' && valorNumerico > 5) {
+    const jaExiste = await comTransacao(async (client) => {
+      const r = await client.query(
+        `SELECT id FROM alertas
+         WHERE user_id = $1 AND tipo = $2 AND lido = false
+           AND mensagem LIKE '%elevado%'
+         LIMIT 1`,
+        [req.userId, tipo]
+      );
+      return r.rowCount > 0;
+    });
+
+    if (!jaExiste) {
+      await comTransacao(async (client) => {
+        await client.query(
+          `INSERT INTO alertas (user_id, mensagem, nivel, tipo)
+           VALUES ($1, $2, 'critico', $3)`,
+          [
+            req.userId,
+            `Consumo elevado de energia detectado: ${valorNumerico} ${leitura.unidade}`,
+            tipo,
+          ]
+        );
       });
     }
   }
@@ -84,18 +127,24 @@ router.post('/', (req, res) => {
     leitura,
     registro: registroConsumo,
     totais: {
-      consumoTotal: total,
+      consumoTotal: somaTotal,
       custoTotal: Number(custoTotal.toFixed(2)),
     },
   });
 });
 
-router.get('/ultimas/:ambienteId', (req, res) => {
-  const itens = store.sensores
-    .filter((s) => s.userId === req.userId && s.ambienteId === req.params.ambienteId)
-    .sort((a, b) => new Date(b.data) - new Date(a.data))
-    .slice(0, 50);
-  return res.json(itens);
+router.get('/ultimas/:ambienteId', async (req, res) => {
+  const resultado = await comTransacao(async (client) => {
+    const r = await client.query(
+      `SELECT * FROM sensores
+       WHERE user_id = $1 AND ambiente_id = $2
+       ORDER BY data DESC
+       LIMIT 50`,
+      [req.userId, req.params.ambienteId]
+    );
+    return r.rows;
+  });
+  return res.json(resultado.map(reduzirSensor));
 });
 
 export default router;

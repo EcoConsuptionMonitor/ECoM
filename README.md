@@ -4,11 +4,11 @@ Sistema de controle de consumo de água e energia. Monorepo com três aplicaçõ
 
 | Pasta        | Stack                                             | Descrição                          |
 |--------------|---------------------------------------------------|------------------------------------|
-| `ECoM-Back`  | Node.js, Express, dotenv, cors                    | API REST                          |
+| `ECoM-Back`  | Node.js, Express 5, pg, dotenv, cors              | API REST + PostgreSQL/Neon        |
 | `ECoM-Mobile`| React Native, Expo 54, React Navigation, charts   | Aplicativo mobile                  |
 | `ECoM-Web`   | Next.js 16, React 19, Tailwind CSS 4 + TypeScript | Aplicação web                      |
 | `ECoM-Hardware` | ESP32 + MicroPython (ACS712 + YF-S201 + relé)  | Firmware de leitura dos sensores da maquete |
-| `ECoM-Arduino`| Arduino Uno (C++) (legado)                        | Versão anterior do firmware        |
+| `ECoM-Arduino`| ESP32 + Arduino C++                               | Firmware Serial + bridge para a maquete |
 
 ## Como rodar
 
@@ -16,9 +16,12 @@ Sistema de controle de consumo de água e energia. Monorepo com três aplicaçõ
 ```bash
 cd ECoM-Back
 npm install
-npm run dev      # ou npm start
+cp .env.example .env   # preencha DATABASE_URL com seu Postgres/Neon
+npm run dev            # ou npm start
 ```
-A API sobe em `http://localhost:3333` (defina `PORT` no `.env` para mudar).
+A API sobe em `http://localhost:3333` (defina `PORT` no `.env` para mudar). Na primeira execução o schema (tabelas) é criado automaticamente no banco. O backend usa **PostgreSQL** (testado com **Neon** serverless) — sem `pg`, rode `npm install pg`.
+
+> Para Neon: crie um projeto em https://neon.tech → copie a connection string em **Pooled connection** e coloque em `DATABASE_URL` (ex.: `postgres://...ep-...-pooler...neon.tech/neondb?sslmode=require`). SSL vem via `DATABASE_SSL`. Dados são **persistentes** — diferentemente da versão antiga em memória.
 
 ### Mobile
 ```bash
@@ -26,6 +29,8 @@ cd ECoM-Mobile
 npm install
 npm start        # ou: npm run android / ios / web
 ```
+
+Para testar no celular físico, copie `ECoM-Mobile/.env.example` para `ECoM-Mobile/.env` e informe o IP da rede local da máquina que executa a API. `localhost` no celular aponta para o próprio aparelho.
 
 ### Web
 ```bash
@@ -60,7 +65,7 @@ Todas as rotas, exceto `/health` e `/auth/*` (exceto `/me`), exigem `Authorizati
 | POST   | `/alertas`         | Cria alerta (`mensagem`, opcional `nivel`/`tipo`) |
 | PATCH  | `/alertas/:id`     | Marca alerta como lido (`lido: true`)      |
 
-A API usa **dados em memória** (sem banco de dados) — os dados são perdidos ao reiniciar o servidor.
+A API persiste dados em **PostgreSQL** (Neon) — `DATABASE_URL` no `.env`. As tabelas (`usuarios`, `sessoes`, `ambientes`, `consumo`, `alertas`, `tarifas`, `sensores`) são criadas sozinhas na primeira subida. Dados **sobrevivem** a reinícios (diferente da versão antiga em memória).
 
 ## Endpoints adicionais
 
@@ -71,16 +76,16 @@ A API usa **dados em memória** (sem banco de dados) — os dados são perdidos 
 | POST   | `/tarifas`                   | Cria/atualiza tarifa (`tipo`, `valorPorUnidade`) |
 | DELETE | `/tarifas/:id`               | Remove tarifa                                    |
 | GET    | `/sensores`                  | Lista leituras de sensores                       |
-| POST   | `/sensores`                  | Registra leitura de sensor (Arduino) e acumula consumo |
+| POST   | `/sensores`                  | Registra leitura de sensor e acumula consumo (`valor` em L para água ou kWh para energia) |
 | GET    | `/sensores/ultimas/:ambienteId` | Últimas 50 leituras de um ambiente             |
 
 > `POST /sensores` também gera alerta automático de consumo alto de energia e calcula custos usando as tarifas configuradas.
 
 ## Estado atual
 
-- **Backend:** API funcional com autenticação (token em memória), consumo, ambientes, alertas, dashboard de estatísticas, tarifas e endpoint de sensores, e tratamento de erro/404 em JSON.
+- **Backend:** API funcional com autenticação (token SHA-256 persistido no banco, sessões em `sessoes`), consumo, ambientes, alertas, dashboard de estatísticas, tarifas e endpoint de sensores — tudo com **PostgreSQL (Neon)** — e tratamento de erro/404 em JSON.
 - **Mobile:** navegação (Splash → Welcome → Login/Cadastro → abas); Login e Cadastro autenticam na API; Home, Alerts, Dashboard (gráficos), Environments (CRUD) e Controls (simulação de dispositivos) consomem dados reais do backend.
 - **Web:** painel (dashboard) com login/registro, gráficos de consumo (Recharts), custos, alertas e página de ambientes com CRUD.
-- **Hardware (ESP32):** firmware MicroPython para `ECoM-Hardware` — 5x ACS712 (corrente), 3x YF-S201 (fluxo de água), 1 relé (lâmpada) e bomba d'água. O ESP32 se conecta ao Wi-Fi e envia as leituras direto para a API (`POST /sensores`). Versão anterior (Arduino Uno + bridge) mantida em `ECoM-Arduino` como legado.
+- **Hardware (ESP32):** `ECoM-Hardware` contém o firmware MicroPython com Wi-Fi e `ECoM-Arduino` contém a alternativa em Arduino C++ que envia leituras pela Serial ao bridge. Ambos suportam 5x ACS712, 3x YF-S201 e 1 relé.
 
 > Nota: use um único gerenciador de pacotes (`npm`) — não commitar `yarn.lock` e `package-lock.json` juntos.

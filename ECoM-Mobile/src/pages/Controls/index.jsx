@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Entypo from '@expo/vector-icons/Entypo';
@@ -21,6 +21,7 @@ const DISPOSITIVOS_PADRAO = [
 export default function Controls() {
   const [dispositivos, setDispositivos] = useState(DISPOSITIVOS_PADRAO);
   const [ambientes, setAmbientes] = useState([]);
+  const [tarifas, setTarifas] = useState({ agua: 5.82, energia: 0.65 });
   const [consumoTempoReal, setConsumoTempoReal] = useState({ energia: 0, agua: 0 });
   const [enviando, setEnviando] = useState(null);
 
@@ -33,8 +34,14 @@ export default function Controls() {
       async function carregar() {
         try {
           const token = getToken();
-          const data = await api('/ambientes', { token });
-          if (ativo) setAmbientes(data);
+          const [ambientesData, dashboardData] = await Promise.all([
+            api('/ambientes', { token }),
+            api('/dashboard', { token }),
+          ]);
+          if (ativo) {
+            setAmbientes(ambientesData);
+            setTarifas(dashboardData.tarifas);
+          }
         } catch {
           if (ativo) setAmbientes([]);
         }
@@ -67,14 +74,15 @@ export default function Controls() {
 
   async function enviarLeitura(dispositivo) {
     if (ambientes.length === 0) {
+      Alert.alert('Crie um ambiente', 'Cadastre ao menos um ambiente antes de enviar uma leitura.');
       return;
     }
     setEnviando(dispositivo.id);
     try {
       const token = getToken();
       const valor = dispositivo.tipo === 'energia'
-        ? (dispositivo.potencia / 1000)
-        : (dispositivo.vazao || 0);
+        ? dispositivo.potencia / 60000
+        : dispositivo.vazao || 0;
       await api('/sensores', {
         method: 'POST',
         token,
@@ -82,21 +90,21 @@ export default function Controls() {
           ambienteId: ambientes[0].id,
           tipo: dispositivo.tipo,
           valor,
+          unidade: dispositivo.tipo === 'energia' ? 'kWh' : 'L',
           potencia: dispositivo.tipo === 'energia' ? dispositivo.potencia : null,
           corrente: dispositivo.tipo === 'energia' ? (dispositivo.potencia / 127).toFixed(2) : null,
           tensao: dispositivo.tipo === 'energia' ? 127 : null,
         },
       });
-    } catch {
-      // ignora erro silenciosamente
+      Alert.alert('Leitura não enviada', 'Não foi possível registrar o consumo. Verifique a conexão com a API.');
     } finally {
       setEnviando(null);
     }
   }
 
   const dispositivosLigados = dispositivos.filter((d) => d.ligado);
-  const custoHoraEnergia = consumoTempoReal.energia * 0.00065;
-  const custoHoraAgua = consumoTempoReal.agua * 0.00582;
+  const custoHoraEnergia = (consumoTempoReal.energia / 1000) * tarifas.energia;
+  const custoHoraAgua = (consumoTempoReal.agua * 60 / 1000) * tarifas.agua;
 
   return (
     <ScrollView style={styles.container}>
@@ -153,7 +161,7 @@ export default function Controls() {
                 {enviando === disp.id ? (
                   <ActivityIndicator color="#1e2d27" size="small" />
                 ) : (
-                  <Text style={styles.enviarText}>Enviar para API</Text>
+                  <Text style={styles.enviarText}>Registrar 1 min de consumo</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -189,7 +197,7 @@ export default function Controls() {
                 {enviando === disp.id ? (
                   <ActivityIndicator color="#1e2d27" size="small" />
                 ) : (
-                  <Text style={styles.enviarText}>Enviar para API</Text>
+                  <Text style={styles.enviarText}>Registrar 1 min de consumo</Text>
                 )}
               </TouchableOpacity>
             )}

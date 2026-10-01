@@ -1,92 +1,120 @@
 import { Router } from 'express';
-import store from '../data/store.js';
+import { query, reduzirAmbiente, reduzirConsumo } from '../lib/db.js';
 import { autenticar } from '../middleware/auth.js';
 
 const router = Router();
 
 router.use(autenticar);
 
-router.get('/', (req, res) => {
-  const itens = store.ambientes.filter((a) => a.userId === req.userId);
-  const result = itens.map((amb) => {
-    const registros = store.consumo.filter((c) => c.ambienteId === amb.id);
-    return {
-      ...amb,
-      totalAgua: registros.filter((c) => c.tipo === 'agua').reduce((a, c) => a + c.valor, 0),
-      totalEnergia: registros.filter((c) => c.tipo === 'energia').reduce((a, c) => a + c.valor, 0),
-      totalRegistros: registros.length,
-    };
-  });
+router.get('/', async (req, res) => {
+  const resultado = await query(
+    `SELECT a.*,
+       COALESCE(SUM(c.valor) FILTER (WHERE c.tipo = 'agua'), 0) AS total_agua,
+       COALESCE(SUM(c.valor) FILTER (WHERE c.tipo = 'energia'), 0) AS total_energia,
+       COUNT(c.id) AS total_registros
+     FROM ambientes a
+     LEFT JOIN consumo c ON c.ambiente_id = a.id
+     WHERE a.user_id = $1
+     GROUP BY a.id
+     ORDER BY a.id`,
+    [req.userId]
+  );
+
+  const result = resultado.rows.map((amb) => ({
+    ...reduzirAmbiente(amb),
+    totalAgua: Number(amb.total_agua),
+    totalEnergia: Number(amb.total_energia),
+    totalRegistros: Number(amb.total_registros),
+  }));
+
   return res.json(result);
 });
 
-router.get('/:id', (req, res) => {
-  const ambiente = store.ambientes.find(
-    (a) => a.id === req.params.id && a.userId === req.userId
+router.get('/:id', async (req, res) => {
+  const ambienteResult = await query(
+    'SELECT * FROM ambientes WHERE id = $1 AND user_id = $2',
+    [req.params.id, req.userId]
   );
-  if (!ambiente) {
+  if (ambienteResult.rowCount === 0) {
     return res.status(404).json({ erro: 'Ambiente não encontrado.' });
   }
 
-  const registros = store.consumo
-    .filter((c) => c.ambienteId === ambiente.id)
-    .sort((a, b) => new Date(b.data) - new Date(a.data));
+  const registrosResult = await query(
+    `SELECT * FROM consumo
+     WHERE ambiente_id = $1
+     ORDER BY data DESC`,
+    [req.params.id]
+  );
 
-  const totalAgua = registros.filter((c) => c.tipo === 'agua').reduce((a, c) => a + c.valor, 0);
-  const totalEnergia = registros.filter((c) => c.tipo === 'energia').reduce((a, c) => a + c.valor, 0);
+  const registros = registrosResult.rows.map(reduzirConsumo);
+  const totalAgua = registros
+    .filter((c) => c.tipo === 'agua')
+    .reduce((a, c) => a + c.valor, 0);
+  const totalEnergia = registros
+    .filter((c) => c.tipo === 'energia')
+    .reduce((a, c) => a + c.valor, 0);
 
   return res.json({
-    ...ambiente,
+    ...reduzirAmbiente(ambienteResult.rows[0]),
     totalAgua,
     totalEnergia,
     registros,
   });
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { nome, localizacao, descricao } = req.body || {};
 
   if (!nome) {
     return res.status(400).json({ erro: 'O campo nome é obrigatório.' });
   }
 
-  const ambiente = {
-    id: store.nextId(),
-    userId: req.userId,
-    nome,
-    localizacao: localizacao || null,
-    descricao: descricao || null,
-    criadoEm: new Date().toISOString(),
-  };
+  const inserido = await query(
+    `INSERT INTO ambientes (user_id, nome, localizacao, descricao)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [req.userId, nome, localizacao || null, descricao || null]
+  );
 
-  store.ambientes.push(ambiente);
-  return res.status(201).json(ambiente);
+  return res.status(201).json(reduzirAmbiente(inserido.rows[0]));
 });
 
-router.patch('/:id', (req, res) => {
-  const ambiente = store.ambientes.find(
-    (a) => a.id === req.params.id && a.userId === req.userId
+router.patch('/:id', async (req, res) => {
+  const ambienteResult = await query(
+    'SELECT * FROM ambientes WHERE id = $1 AND user_id = $2',
+    [req.params.id, req.userId]
   );
-  if (!ambiente) {
+  if (ambienteResult.rowCount === 0) {
     return res.status(404).json({ erro: 'Ambiente não encontrado.' });
   }
 
+  const atual = ambienteResult.rows[0];
   const { nome, localizacao, descricao } = req.body || {};
-  if (nome != null) ambiente.nome = nome;
-  if (localizacao != null) ambiente.localizacao = localizacao;
-  if (descricao != null) ambiente.descricao = descricao;
 
-  return res.json(ambiente);
+  const atualizado = await query(
+    `UPDATE ambientes
+     SET nome = $1, localizacao = $2, descricao = $3
+     WHERE id = $4
+     RETURNING *`,
+    [
+      nome != null ? nome : atual.nome,
+      localizacao != null ? localizacao : atual.localizacao,
+      descricao != null ? descricao : atual.descricao,
+      req.params.id,
+    ]
+  );
+
+  return res.json(reduzirAmbiente(atualizado.rows[0]));
 });
 
-router.delete('/:id', (req, res) => {
-  const index = store.ambientes.findIndex(
-    (a) => a.id === req.params.id && a.userId === req.userId
+router.delete('/:id', async (req, res) => {
+  const resultado = await query(
+    'DELETE FROM ambientes WHERE id = $1 AND user_id = $2',
+    [req.params.id, req.userId]
   );
-  if (index === -1) {
+  if (resultado.rowCount === 0) {
     return res.status(404).json({ erro: 'Ambiente não encontrado.' });
   }
-  store.ambientes.splice(index, 1);
   return res.status(204).send();
 });
 
