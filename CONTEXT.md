@@ -19,7 +19,7 @@ O **ECoM** é um sistema de **monitoramento de consumo de água e energia** base
 ECoM/
 ├── README.md              # documentação principal (pt-BR)
 ├── ECoM-Back/             # API REST — Node.js + Express 5 (ES Modules)
-├── ECoM-Mobile/           # App mobile — React Native 0.81 + Expo ~54
+├── ECoM-Mobile/           # App mobile — React Native 0.86 + Expo 57 + Expo Router (TypeScript)
 ├── ECoM-Web/              # App web — Next.js 16 + React 19 + TypeScript + Tailwind 4
 ├── ECoM-Hardware/         # Firmware atual — ESP32 + MicroPython (main.py)
 └── ECoM-Arduino/          # Versão LEGADA — Arduino Uno C++ + bridge em Node.js
@@ -30,7 +30,7 @@ ECoM/
 | Camada | Tecnologia |
 |---|---|
 | Backend | Node.js, **Express 5.2**, ES Modules, `pg`, `dotenv`, `cors`. **PostgreSQL (Neon/Neon)** — schema criado automaticamente. |
-| Mobile | React Native 0.81, **Expo ~54.0.37**, React 19.1, React Navigation (stack + bottom-tabs), `react-native-chart-kit`, `react-native-svg`. |
+| Mobile | React Native 0.86, **Expo 57**, React 19.2, **Expo Router ~57** (file-based, TS strict), **AsyncStorage** (sessão persistida), `react-native-chart-kit`, `react-native-svg`. |
 | Web | **Next.js 16.3** (App Router), React 19.2, TypeScript 5 (strict), Tailwind CSS 4, Recharts 3.10, ESLint 9. |
 | Hardware | ESP32 + MicroPython (socket HTTP puro, sem bibliotecas). 5× ACS712 (corrente), 3× YF-S201 (fluxo), 1 relay, 1 bomba d'água, 1 botão. |
 | Hardware Arduino | ESP32 (5x ACS712, 3x YF-S201, relé) + `bridge.js` (serialport → API). |
@@ -47,7 +47,7 @@ Arduino legado (bridge.js) ──POST /consumo───────────�
 
 - **Hardware → Backend**: envia `{ambienteId, tipo, valor}` para `POST /sensores`. O backend grava a leitura, **cria automaticamente um registro de consumo**, calcula custo com base nas tarifas e **gera alerta "critico"** quando energia > 5.
 - **Web/Mobile → Backend**: login via `POST /auth/login|register`, token no header `Authorization: Bearer <token>`.
-- Web persiste auth no `localStorage`; mobile guarda token **apenas em memória** (sessão se perde ao fechar o app).
+- Web persiste auth no `localStorage`; mobile persiste token/usuário em **AsyncStorage** (`ecom_token`/`ecom_usuario`) — sessão sobrevive ao fechar o app.
 
 ## 5. Backend (ECoM-Back)
 
@@ -78,18 +78,32 @@ Arduino legado (bridge.js) ──POST /consumo───────────�
 - `src/lib/auth-context.tsx` — contexto de auth com persistência em `localStorage` (`ecom_token`, `ecom_usuario`).
 - URL da API: `NEXT_PUBLIC_API_URL` (default `http://localhost:3333`).
 
-## 7. Mobile (ECoM-Mobile)
+## 7. Mobile (ECoM-Mobile) — reescrito com Expo Router + TypeScript
 
-- `App.jsx` — NavigationContainer + Stack: Splash → Welcome → Login/Cadastro → Home (tabs).
-- **Bottom tabs** (`src/routes/bottoms.routes.jsx`, 5 abas): Home, Alerts, Dashboard, Environments, Controls.
-- **Telas** em `src/pages/`:
-  - **Home**: saudação com nome real, totais via `/consumo` e `/alertas` (obs: custo mostrado é `totalEnergia + totalAgua` em R$, **não** usa tarifa), badge de alertas no sino, dica de sustentabilidade.
-  - **Alerts**: lista colorida por nível, toque marca como lido (`PATCH /alertas/:id {lido:true}`).
-  - **Dashboard**: `/dashboard`, seletor de período (7d/mes/ano — **cosmético**, gráfico sempre usa últimos 7 dias), cards de resumo, LineCharts energia/água, PieChart, BarChart por ambiente.
-  - **Environments**: CRUD com modal inline; ícones inteligentes por palavra-chave no nome (quartos, cozinha, banheiro, sala, lavanderia, jardim).
-  - **Controls**: simulador de mini-residência — 9 dispositivos (5 energia com potência em W, 4 água com L/min); toggles acumulam "tempo real"; cada dispositivo tem botão "Enviar para API" → `POST /sensores`.
-- **Serviços**: `src/services/api.js` (fetch wrapper, URL hardcoded `http://localhost:3333`) e `src/services/session.js` (token/usuário em módulo, **não persistido** — em dispositivo físico usar IP da LAN, não localhost).
-- `AppStyles.js` está **vazio**; estilos são inline por tela via `StyleSheet`.
+> Refatoração completa (out/2026): o app antigo (JSX + React Navigation, dois temas visuais, 6/8 telas quebradas por chamadas `api()` errôneas) foi substituído por uma base TypeScript estrita com Expo Router.
+
+- **Estrutura de rotas** (`app/`, file-based):
+  - `app/_layout.tsx` — `AuthProvider` + auth-guard (redirect baseado em sessão) + splash nativo (`expo-splash-screen`).
+  - `app/index.tsx` — redirect inicial para `(auth)/welcome`.
+  - `app/(auth)/` — `welcome`, `login`, `cadastro` (cadastro agora **envia `telefone`**, antes era descartado).
+  - `app/(app)/_layout.tsx` — bottom tabs: `index` (Início), `dashboard`, `controles`, `ambientes`, `alertas`.
+  - `app/perfil.tsx` — tela de conta fora das tabs (acessada do Home).
+- **Camada de serviços** (`src/services/`):
+  - `api.ts` — fetch wrapper tipado com `ApiError`, injeta Bearer do token em memória; objeto `api` com métodos nomeados (`login`, `getDashboard`, `enviarSensor`, ...) — todos com `JSON.stringify` correto.
+  - `session.ts` — token/usuário em módulo + **AsyncStorage** (`carregarSessao`/`salvarSessao`/`limparSessao`).
+- **Contexto**: `src/context/auth.tsx` — `AuthProvider` com `entrar`/`registrar`/`sair`/`recarregarUsuario`; hidrata sessão no boot.
+- **Tipos**: `src/types.ts` — interfaces espelhando o contrato real do backend (ids `string`, `Dashboard.totais/mes/alertas/historico/consumoPorAmbiente/alertasRecentes/tarifas`).
+- **Tema único**: `src/styles/theme.ts` — paleta "eco-clara" (fundo `#F5F6F1`, floresta `#16352B`, verde `#3E8D62`, água `#3478C5`) + `espacamento`/`raio`. O tema neon-escuro antigo foi removido.
+- **Componentes** (`src/components/`): `Botao`, `Campo` (input com label/erro), `Carregando`, `Vazio` (empty state).
+- **Telas**:
+  - **Início**: saudação, custo acumulado (hero), métricas energia/água, resumo de alertas, 3 alertas recentes, pull-to-refresh.
+  - **Análises**: `/dashboard` com seletor de período **funcional** (7/14/30 dias — filtra o `historico` do servidor, antes era cosmético), LineCharts/Pie/Bar em cores do tema, legenda manual no bar chart.
+  - **Alertas**: colorido por nível, `PATCH /alertas/:id` marca lido.
+  - **Ambientes**: CRUD em Modal (teclado tratado), ícones por palavra-chave (Ionicons), totais por ambiente.
+  - **Controles**: 9 dispositivos (6 energia / 3 água), **seletor de ambiente de destino** (antes sempre usava `ambientes[0]`), envio corrigido (antes o alerta de erro era mostrado após sucesso — bug invertido), custo/hora com tarifas reais do dashboard.
+  - **Perfil**: `/auth/me` (rota correta — antes o helper apontava para `/me`), logout que limpa AsyncStorage.
+- **Config**: `app.json` com `scheme: "ecom"`, bundle ids, `experiments.typedRoutes`; `package.json` com `main: "expo-router/entry"`; `tsconfig.json` strict.
+- Em dispositivo físico, usar o IP da LAN via `EXPO_PUBLIC_API_URL` (`.env`).
 
 ## 8. Hardware (ECoM-Hardware — firmware atual)
 
@@ -112,7 +126,7 @@ Arduino legado (bridge.js) ──POST /consumo───────────�
 |---|---|
 | Backend | `cd ECoM-Back && npm install && npm run dev` (node --watch). API em `http://localhost:3333`. |
 | Web | `cd ECoM-Web && npm install && npm run dev`. Lint: `npm run lint`. Build: `npm run build`. |
-| Mobile | `cd ECoM-Mobile && npm install && npm start` (ou `npm run android`/`ios`/`web`). `npx expo-doctor` valida. |
+| Mobile | `cd ECoM-Mobile && npm install && npm start` (ou `npm run android`/`ios`/`web`). Typecheck: `npx tsc --noEmit`. `npx expo-doctor` valida. |
 | Hardware | Flash MicroPython via `esptool.py` + `mpremote connect COMx fs cp boot.py main.py config.json :`. Criar `config.json` a partir do exemplo. |
 | Arduino ESP32 | Upload via Arduino IDE; `cd ECoM-Arduino && node bridge.js COM3 SEU_TOKEN`. |
 
@@ -124,12 +138,12 @@ Arduino legado (bridge.js) ──POST /consumo───────────�
 - `.gitignore` raiz ignora `.env*` (exceto `.env.example`), `dist/`, `build/`, `.playwright-cli/`, nós do Arduino. O hardware ignora `config.json` (segredos locais).
 - **Segurança mínima (projeto educacional):** SHA-256 (não bcrypt) para senhas, tokens sem expiração, CORS aberto.
 - O hardware envia água em **litros** mas as tarifas são em **R$/m³**; o backend converte (fator 1/1000).
-- Tarifas default duplicadas em dois lugares do backend (dashboard `5.82`/`0.65` e rota de sensores). O mobile Controls usa valores diferentes (`0.00065`/W e `0.00582`/L-min) — matemática de unidade incorreta, mas é só simulação.
+- Tarifas default duplicadas em dois lugares do backend (dashboard `5.82`/`0.65` e rota de sensores). O mobile Controls agora lê as tarifas reais do `/dashboard` (o valores antigos `0.00065`/W foram removidos na refatoração).
 
 ## 12. Convenções a seguir ao editar
 
 - Backend: ES Modules (`import/export`), estilo já usado nas rotas existentes, sem comentários desnecessários.
 - Web: client components (`'use client'`), TypeScript estrito, `@/*` → `./src/*`, Tailwind/Recharts conforme páginas existentes.
-- Mobile: componentes React Native com `StyleSheet.create` inline, padrão de `KeyboardAvoidingView`/`SafeAreaView` das telas existentes, português como idioma da UI.
+- Mobile: **TypeScript estrito**, Expo Router (telas em `app/`, imports relativos `../../src/...`), tema/espacamento de `src/styles/theme.ts`, componentes de `src/components/`, UI em pt-BR. Verificar com `npx tsc --noEmit`.
 - Não adicionar testes sem antes perguntar (não há framework de teste configurado).
 - Idioma do código/UI: português (pt-BR).
