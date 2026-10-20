@@ -85,7 +85,7 @@ A API persiste dados em **PostgreSQL** (Neon) — `DATABASE_URL` no `.env`. As t
 
 - **Backend:** API funcional com autenticação (token SHA-256 persistido no banco, sessões em `sessoes`), consumo, ambientes, alertas, dashboard de estatísticas, tarifas e endpoint de sensores — tudo com **PostgreSQL (Neon)** — e tratamento de erro/404 em JSON.
 - **Mobile:** navegação (Splash → Welcome → Login/Cadastro → abas); Login e Cadastro autenticam na API; Home, Alerts, Dashboard (gráficos), Environments (CRUD) e Controls (simulação de dispositivos) consomem dados reais do backend.
-- **Web:** painel (dashboard) com login/registro, gráficos de consumo (Recharts), custos, alertas e página de ambientes com CRUD.
+- **Web:** tema "eco-claro" com route groups `(publico)`/`(auth)`/`(app)` — landing page pública em `/`, Login/Cadastro, Início, Análises com seletor de 7/14/30 dias (Recharts), Ambientes (CRUD), Alertas, Controles (simulação de 9 dispositivos) e Perfil com edição de tarifas de água/energia.
 - **Hardware (ESP32):** `ECoM-Hardware` contém o firmware MicroPython com Wi-Fi e `ECoM-Arduino` contém a alternativa em Arduino C++ que envia leituras pela Serial ao bridge. Ambos suportam 5x ACS712, 3x YF-S201 e 1 relé.
 
 > Nota: use um único gerenciador de pacotes (`npm`) — não commitar `yarn.lock` e `package-lock.json` juntos.

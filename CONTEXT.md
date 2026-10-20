@@ -66,17 +66,32 @@ Arduino legado (bridge.js) ──POST /consumo───────────�
   - `App.jsx` e `src/pages/` no ECoM-Back são **arquivos perdidos/perdidos** (código React Native), não são usados pelo backend.
   - CORS está aberto (`app.use(cors())`); `CORS_ORIGIN` do `.env.example` não é lido pelo código.
 
-## 6. Web (ECoM-Web)
+## 6. Web (ECoM-Web) — reescrito com route groups + tema "eco"
 
-> **IMPORTANTE**: Next.js 16 tem mudanças que quebram código antigo — os arquivos `AGENTS.md`/`CLAUDE.md` alertam: "This is NOT the Next.js you know". A documentação relevante está em `node_modules/next/dist/docs/`.
+> **IMPORTANTE**: Next.js 16 tem mudanças que quebram código antigo — os arquivos `AGENTS.md`/`CLAUDE.md` alertam: "This is NOT the Next.js you know". A documentação relevante está em `node_modules/next/dist/docs/` (`LayoutProps` é helper global).
 
-- `src/app/layout.tsx` — layout raiz com `AuthProvider`.
-- `src/app/page.tsx` — **Dashboard** (346 linhas, client component): modal de login/cadastro quando não autenticado; quando autenticado mostra 4 cards de métricas (energia, água, custo, alertas ativos), custo do mês, 2 gráficos de linha (kWh/dia e L/dia), pie de proporção, barra por ambiente e lista de alertas recentes (coloridos por criticidade). Usa **Recharts**.
-- `src/app/ambientes/page.tsx` — CRUD completo de ambientes (232 linhas), modal de criar/editar (`nome` obrigatório, `localizacao`/`descricao` opcionais), exclusão com confirmação.
-- `src/components/NavBar.tsx` — navegação Dashboard/Ambientes + logout.
-- `src/lib/api.ts` — wrapper fetch tipado + interfaces TypeScript.
-- `src/lib/auth-context.tsx` — contexto de auth com persistência em `localStorage` (`ecom_token`, `ecom_usuario`).
-- URL da API: `NEXT_PUBLIC_API_URL` (default `http://localhost:3333`).
+> Refatoração completa (out/2026), espelhando a refatoração do mobile: tema neon-escuro (#1e2d27/#c8ff00) substituído pela paleta "eco-clara", login/cadastro em rotas próprias, novas telas de Alertas/Controles/Perfil e seletor de período funcional.
+
+- **Estrutura de rotas** (App Router, route groups):
+  - `src/app/layout.tsx` — layout raiz (fontes Geist, `AuthProvider`, metadata pt-BR).
+  - `src/app/(publico)/` — `layout.tsx` + `page.tsx` — **landing page pública** em `/` que explica o projeto (hero, "como funciona" em 3 passos, recursos, CTA de cadastro/login). A raiz `/` e o painel `/inicio` são rotas independentes — nenhuma redireciona para a outra.
+  - `src/app/(auth)/` — `layout.tsx` (redireciona autenticado para `/inicio`), `login/page.tsx`, `cadastro/page.tsx` (envia `telefone`).
+  - `src/app/(app)/` — `layout.tsx` (guard `Protegida` + `NavBar` + container), páginas: `inicio` (Início), `dashboard`, `ambientes`, `alertas`, `controles`, `perfil`.
+  - As antigas `src/app/page.tsx` e `src/app/ambientes/` fora dos route groups foram removidas (conflito de rotas).
+- **Telas**:
+  - **Landing** (`/`, pública): apresentação do ECoM para visitantes deslogados — do sensor ao painel.
+  - **Início** (`/inicio`): saudação, hero de gasto acumulado, métricas energia/água, resumo de alertas, 3 recentes, CTA "Registrar consumo" → `/controles`.
+  - **Análises** (`/dashboard`): seletor de período **7/14/30 dias** (filtra `historico` do cliente), Line/Pie/Bar em Recharts, custo do mês e totais, lista de alertas.
+  - **Ambientes**: CRUD com modal, ícone por palavra-chave do nome, totais por ambiente.
+  - **Alertas**: coloridos por nível (critico/alerta/info), botão "Lido" → `PATCH /alertas/:id`.
+  - **Controles**: 9 dispositivos simulados (6 energia / 3 água) com toggles, seletor de ambiente de destino, envio via `POST /sensores` ("Registrar 1 min de consumo"), custo/hora com tarifas reais do dashboard.
+  - **Perfil**: dados da conta (`GET /auth/me`), **editor de tarifas** (`GET/PUT /tarifas` — R$/m³ e R$/kWh), logout com confirmação.
+- **Camada de código**:
+  - `src/lib/api.ts` — fetch wrapper com `ApiError`, token em memória (`definirToken`/`obterToken`), objeto `api` com métodos nomeados (`login`, `getDashboard`, `enviarSensor`, `salvarTarifas`, ...). URL: `NEXT_PUBLIC_API_URL` (default `http://localhost:3333`).
+  - `src/lib/types.ts` — interfaces espelhando o contrato do backend (mesmas do mobile).
+  - `src/lib/auth-context.tsx` — `AuthProvider` com `entrar`/`cadastrar`/`sair`; hidrata sessão do `localStorage` (`ecom_token`, `ecom_usuario`) só no cliente (flag `carregando` evita flicker/redirect indevido).
+  - `src/components/` — `Botao`, `Campo`, `Carregando`, `Vazio`, `Protegida` (guard), `NavBar` (links desktop + tabs roláveis mobile + avatar → `/perfil`).
+- **Tema**: `src/app/globals.css` com Tailwind 4 `@theme inline` — tokens `fundo`/`superficie`/`texto`/`texto-suave`/`linha`/`floresta`/`verde`(+`-claro`)/`agua`(+`-claro`)/`alerta`(+`-claro`)/`perigo`(+`-claro`). Sem variações de sombra (não existem `verde-50` etc.).
 
 ## 7. Mobile (ECoM-Mobile) — reescrito com Expo Router + TypeScript
 
