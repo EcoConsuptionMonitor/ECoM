@@ -5,31 +5,39 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Splash.png",
+    "scheme": "ecom",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ecom.ecomonitor"
     },
     "android": {
+      "package": "com.ecom.ecomonitor",
       "adaptiveIcon": {
         "foregroundImage": "./assets/Splash.png",
-        "backgroundColor": "#00291e"
+        "backgroundColor": "#16352B"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
-      "expo-status-bar",
       "expo-font",
       [
         "expo-splash-screen",
         {
           "image": "./assets/Splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#1e2d27"
+          "backgroundColor": "#16352B"
         }
-      ]
-    ]
+      ],
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
